@@ -1,0 +1,10 @@
+{
+  "Name": "Zuko y Lila",
+  "Author": "Shercris",
+  "Version": "1.0.0",
+  "Description": "Zuko y Lila te siguen por el valle, te traen regalitos y protagonizan eventos especiales.",
+  "UniqueID": "Shercris.ZukoYLila",
+  "EntryDll": "ZukoYLilaMod.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}

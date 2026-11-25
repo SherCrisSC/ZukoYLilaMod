@@ -6,7 +6,7 @@ Mod de SMAPI para **Stardew Valley 1.6+** que añade a **Zuko** y **Lila** como 
 
 ## 📥 Descarga e Instalación
 
-👉 **[Descargar última versión (v1.0.0) aquí](https://github.com/SherCrisSC/ZukoYLilaMod/releases/latest)**
+👉 **[Descargar última versión aquí](https://github.com/SherCrisSC/ZukoYLilaMod/releases/latest)**
 
 ### Requisitos
 * [Stardew Valley](https://www.stardewvalley.net/) (v1.6 o superior)

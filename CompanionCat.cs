@@ -1,4 +1,5 @@
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using StardewValley;
 using System;
 using System.Collections.Generic;
@@ -14,6 +15,27 @@ namespace ZukoYLilaMod
         private static readonly Random rng = new Random();
 
         public bool PettedToday { get; set; } = false;
+
+        // Constructor sin parámetros requerido por el motor de red (Netcode) de Stardew Valley
+        public CompanionCat()
+            : base(
+                sprite: new AnimatedSprite("Animals\\cat", 0, 32, 32),
+                position: Vector2.Zero,
+                defaultMap: "Farm",
+                facingDir: 2,
+                name: "Zuko",
+                portrait: null,
+                eventActor: false
+            )
+        {
+            this.followDistance = 64f;
+            this.moveSpeed = 4.2f;
+            this.offsetPreference = new Vector2(-48f, 24f);
+            this.HideShadow = false;
+            this.Breather = false;
+            this.farmerPassesThrough = true;
+            this.collidesWithOtherCharacters.Value = false;
+        }
 
         public CompanionCat(string name, string spriteAssetName, float followDistance, float moveSpeed, Vector2 offsetPreference)
             : base(
@@ -36,28 +58,18 @@ namespace ZukoYLilaMod
             this.collidesWithOtherCharacters.Value = false;
         }
 
-        public void WarpToPlayer(Farmer player)
+        public void WarpToPlayer(Farmer? player)
         {
-            if (player.currentLocation == null)
+            if (player?.currentLocation == null)
                 return;
 
-            if (this.currentLocation != player.currentLocation)
-            {
-                this.currentLocation?.characters.Remove(this);
-                this.currentLocation = player.currentLocation;
-
-                if (!player.currentLocation.characters.Contains(this))
-                {
-                    player.currentLocation.addCharacter(this);
-                }
-            }
-
+            this.currentLocation = player.currentLocation;
             Vector2 spawnPos = player.Position + this.offsetPreference;
             this.Position = spawnPos;
             this.SetCatFacing(player.FacingDirection, isMoving: false, Game1.currentGameTime);
         }
 
-        public void UpdateFollow(Farmer player, GameTime time)
+        public void UpdateFollow(Farmer? player, GameTime time)
         {
             if (player?.currentLocation == null)
                 return;
@@ -66,6 +78,19 @@ namespace ZukoYLilaMod
             {
                 this.WarpToPlayer(player);
                 return;
+            }
+
+            // Actualiza saltos y emotes activos en cada tick
+            this.updateEmote(time);
+            if (this.yJumpOffset != 0 || this.yJumpVelocity != 0f)
+            {
+                this.yJumpOffset += (int)this.yJumpVelocity;
+                this.yJumpVelocity -= 0.5f;
+                if (this.yJumpOffset >= 0)
+                {
+                    this.yJumpOffset = 0;
+                    this.yJumpVelocity = 0f;
+                }
             }
 
             Vector2 targetPos = player.Position + this.offsetPreference;
@@ -93,44 +118,78 @@ namespace ZukoYLilaMod
             }
         }
 
+        public void DrawCompanion(SpriteBatch b)
+        {
+            if (this.currentLocation == null || this.currentLocation != Game1.currentLocation || this.Sprite == null)
+                return;
+
+            Vector2 screenPos = Game1.GlobalToLocal(Game1.viewport, this.Position + new Vector2(0f, this.yJumpOffset));
+            float layerDepth = Math.Max(0f, (this.Position.Y + 64f) / 10000f);
+
+            // Sombra suave debajo del gatito
+            b.Draw(
+                Game1.shadowTexture,
+                Game1.GlobalToLocal(Game1.viewport, this.Position + new Vector2(32f, 58f)),
+                Game1.shadowTexture.Bounds,
+                Color.White * 0.6f,
+                0f,
+                new Vector2(Game1.shadowTexture.Bounds.Center.X, Game1.shadowTexture.Bounds.Center.Y),
+                3.2f,
+                SpriteEffects.None,
+                layerDepth - 0.0001f
+            );
+
+            // Sprite animado del gato
+            b.Draw(
+                this.Sprite.Texture,
+                screenPos,
+                this.Sprite.SourceRect,
+                Color.White,
+                0f,
+                Vector2.Zero,
+                4f,
+                SpriteEffects.None,
+                layerDepth
+            );
+
+            // Dibuja el globo de corazón (emote) si está activo
+            if (this.IsEmoting)
+            {
+                Vector2 emotePos = screenPos + new Vector2(16f, -36f);
+                b.Draw(
+                    Game1.emoteSpriteSheet,
+                    emotePos,
+                    new Rectangle(this.CurrentEmoteIndex * 16 % Game1.emoteSpriteSheet.Width, this.CurrentEmoteIndex * 16 / Game1.emoteSpriteSheet.Width * 16, 16, 16),
+                    Color.White,
+                    0f,
+                    Vector2.Zero,
+                    4f,
+                    SpriteEffects.None,
+                    layerDepth + 0.001f
+                );
+            }
+        }
+
         public bool TryPet(ref int friendshipPoints)
         {
             if (this.currentLocation == null)
                 return false;
 
-            this.jump(4f);
+            this.yJumpVelocity = 6f;
+            this.yJumpOffset = -1;
             this.currentLocation.playSound("cat");
-            this.doEmote(20); // Emote de corazón
+            this.doEmote(20);
 
             if (!this.PettedToday)
             {
                 this.PettedToday = true;
-                // 45 puntos diarios -> 56 días (2 estaciones completas) = 2520 -> tope 2500 (10 corazones)
                 friendshipPoints = Math.Min(2500, friendshipPoints + 45);
-                this.SyncSocialFriendship(friendshipPoints);
+            }
 
-                int hearts = friendshipPoints / 250;
-                Game1.addHUDMessage(new HUDMessage($"¡Le hiciste cariño a {this.Name}! ({hearts}/10 corazones)", HUDMessage.newQuest_type));
-                return true;
-            }
-            else
-            {
-                int hearts = friendshipPoints / 250;
-                Game1.addHUDMessage(new HUDMessage($"{this.Name} ronronea feliz ({hearts}/10 corazones).", HUDMessage.achievement_type));
-                return false;
-            }
-        }
-
-        public void SyncSocialFriendship(int points)
-        {
-            if (!Game1.player.friendshipData.ContainsKey(this.Name))
-            {
-                Game1.player.friendshipData.Add(this.Name, new Friendship(points));
-            }
-            else
-            {
-                Game1.player.friendshipData[this.Name].Points = points;
-            }
+            int hearts = friendshipPoints / 250;
+            string heartBar = new string('♥', hearts) + new string('♡', 10 - hearts);
+            Game1.addHUDMessage(new HUDMessage($"{this.Name}: {heartBar} ({hearts}/10)", HUDMessage.newQuest_type));
+            return true;
         }
 
         public void DropGift(string qualifiedItemId, List<string> customPhrases)
@@ -148,7 +207,8 @@ namespace ZukoYLilaMod
                 location: this.currentLocation
             );
 
-            this.jump(4f);
+            this.yJumpVelocity = 6f;
+            this.yJumpOffset = -1;
             this.currentLocation.playSound("cat");
             this.doEmote(20);
             Game1.addHUDMessage(new HUDMessage(chosenPhrase, HUDMessage.newQuest_type));
@@ -160,10 +220,10 @@ namespace ZukoYLilaMod
 
             int spriteRow = playerFacingDirection switch
             {
-                2 => 0, // Abajo
-                1 => 1, // Derecha
-                0 => 2, // Arriba
-                3 => 3, // Izquierda
+                2 => 0,
+                1 => 1,
+                0 => 2,
+                3 => 3,
                 _ => 0
             };
 
